@@ -373,3 +373,54 @@ class QwiicTitanGps(object):
             pass
 
         return True
+
+    def send_pmtk_packet(self, command):
+        """
+        Send a given command or configuration string to the module.
+        The input buffer on the MTK is 255 bytes. Caller must keep strings shorter than 255 bytes.
+        Any time you end transmission you must give the module 10ms to process bytes.
+        
+        :param command: The PMTK command string to send.
+        :return: True if the command was sent successfully, otherwise False.
+        :rtype: bool
+        """
+        if len(command) > 255:
+            print("Command message too long!")
+            return False
+
+        # Send the command in 32 byte chunks
+        for chunk in range(0, len(command), 32):
+            self._i2c.write_i2c_block_data(self.address, 0x00, [ord(c) for c in command[chunk:chunk + 32]])
+            time.sleep(0.01)  # Slave requires 10 ms to process incoming bytes
+
+        return True
+    
+    def create_pmtk_packet(self, packet_type, data_field=""):
+        """
+        Create a PMTK packet with the appropriate header, packet type, data field, and CRC.
+
+        :param packet_type: The type of the PMTK packet.
+        :param data_field: Optional data field for the PMTK packet.
+        :return: The complete PMTK packet string.
+        :rtype: str
+        """
+        config_sentence = f"$PMTK{packet_type:03d}{data_field}*"
+        config_sentence += self.calc_crc_for_pmtk(config_sentence)
+        config_sentence += '\r\n'
+        return config_sentence
+
+    def calc_crc_for_pmtk(self, sentence):
+        """
+        Calculate CRC for PMTK messages.
+
+        :param sentence: The PMTK sentence string.
+        :return: The CRC string.
+        :rtype: str
+        """
+        crc = 0
+        for char in sentence[1:]:
+            if char == '*':
+                break
+            crc ^= ord(char)
+        
+        return f"{crc:02X}"
